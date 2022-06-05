@@ -11,7 +11,8 @@ from html import escape
 from telegram.ext import CommandHandler
 from telegram import InlineKeyboardMarkup
 
-from bot import Interval, aria2, QB_SEED, dispatcher, DLOAD_DIR, \
+from bot import Interval, INDEX_URL, BUTTON_FOUR_NAME, BUTTON_FOUR_URL, BUTTON_FIVE_NAME, BUTTON_FIVE_URL, \
+                BUTTON_SIX_NAME, BUTTON_SIX_URL, VIEW_LINK, aria2, QB_SEED, dispatcher, DLOAD_DIR, DOWNLOAD_DIR, \
                 download_dict, download_dict_lock, TG_SPLIT_SIZE, LOGGER, DB_URI, INCOMPLETE_TASK_NOTIFIER
 from bot.helper.ext_utils.bot_utils import is_url, is_magnet, is_gdtot_link, is_mega_link, is_gdrive_link, get_content_type
 from bot.helper.ext_utils.fs_utils import get_base_name, get_path_size, split_file, clean_download
@@ -23,7 +24,13 @@ from bot.helper.mirror_utils.download_utils.qbit_downloader import QbDownloader
 from bot.helper.mirror_utils.download_utils.mega_downloader import add_mega_download
 from bot.helper.mirror_utils.download_utils.direct_link_generator import direct_link_generator
 from bot.helper.mirror_utils.download_utils.telegram_downloader import TelegramDownloadHelper
+from bot.helper.mirror_utils.status_utils.extract_status import ExtractStatus
+from bot.helper.mirror_utils.status_utils.zip_status import ZipStatus
+from bot.helper.mirror_utils.status_utils.split_status import SplitStatus
+from bot.helper.mirror_utils.status_utils.upload_status import UploadStatus
+from bot.helper.mirror_utils.status_utils.tg_upload_status import TgUploadStatus
 from bot.helper.mirror_utils.upload_utils.gdriveTools import GoogleDriveHelper
+from bot.helper.mirror_utils.upload_utils.pyrogramEngine import TgUploader
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
 from bot.helper.telegram_helper.message_utils import sendMessage, sendMarkup, delete_all_messages, update_all_messages
@@ -57,12 +64,40 @@ class MirrorListener:
         if not self.isPrivate and INCOMPLETE_TASK_NOTIFIER and DB_URI is not None:
             DbManger().add_incomplete_task(self.message.chat.id, self.message.link, self.tag)
 
-    def onDownloadComplete(self, link: str, size, files, folders, typ, name: str):
+    def onDownloadComplete(self):
+        with download_dict_lock:
+            LOGGER.info(f"Download completed: {download_dict[self.uid].name()}")
+            download = download_dict[self.uid]
+            name = str(download.name()).replace('/', '')
+            gid = download.gid()
+            size = download.size_raw()
+            if name == "None" or self.isQbit or not ospath.exists(f'{DLOAD_DIR}/{name}'):
+                name = listdir(f'{DLOAD_DIR}')[-1]
+            m_path = f'{DLOAD_DIR}/{name}'
+        msg = f"<b>Name: </b><code>{escape(name)}</code>\n\n<b>Size: </b>{size}"
+        
+        
+    def onDownloadError(self, error):
+        error = error.replace('<', ' ').replace('>', ' ')
+        clean_download(f'{DLOAD_DIR}')
+        with download_dict_lock:
+            try:
+                del download_dict[self.uid]
+            except Exception as e:
+                LOGGER.error(str(e))
+            count = len(download_dict)
+        msg = f"{self.tag} your download has been stopped due to: {error}"
+        sendMessage(msg, self.bot, self.message)
+        if count == 0:
+            self.clean()
+        else:
+            update_all_messages()
+
         if not self.isPrivate and INCOMPLETE_TASK_NOTIFIER and DB_URI is not None:
             DbManger().rm_complete_task(self.message.link)
-        msg = f"<b>Name: </b><code>{escape(name)}</code>\n\n<b>Size: </b>{size}"
 
-def _dload(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False, pswd=None, multi=0):
+
+def _mirror(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False, pswd=None, multi=0):
     mesg = message.text.split('\n')
     message_args = mesg[0].split(' ', maxsplit=1)
     name_args = mesg[0].split('|', maxsplit=1)
@@ -126,7 +161,7 @@ def _dload(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False
             elif file.mime_type != "application/x-bittorrent" and not isQbit:
                 listener = MirrorListener(bot, message, isZip, extract, isQbit, isLeech, pswd, tag)
                 tg_downloader = TelegramDownloadHelper(listener)
-                tg_downloader.add_download(message, f'{DLOAD_DIR}/', name)
+                tg_downloader.add_download(message, f'{DOWNLOAD_DIR}{listener.uid}/', name)
                 if multi > 1:
                     sleep(3)
                     nextmsg = type('nextmsg', (object, ), {'chat_id': message.chat_id, 'message_id': message.reply_to_message.message_id + 1})
@@ -170,13 +205,12 @@ def _dload(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False
     listener = MirrorListener(bot, message, isZip, extract, isQbit, isLeech, pswd, tag)
 
     if is_gdrive_link(link):
-        try:
-            Thread(target=add_gd_download, args=(link, listener, is_gdtot)).start()
+    	Thread(target=add_gd_download, args=(link, listener, is_gdtot)).start()
     elif is_mega_link(link):
-        Thread(target=add_mega_download, args=(link, f'{DLOAD_DIR}/', listener)).start()
+        Thread(target=add_mega_download, args=(link, f'{DOWNLOAD_DIR}{listener.uid}/', listener)).start()
     elif isQbit:
         qb_dl = QbDownloader(listener)
-        Thread(target=qb_dl.add_qb_torrent, args=(link, f'{DLOAD_DIR}', qbitsel)).start()
+        Thread(target=qb_dl.add_qb_torrent, args=(link, f'{DOWNLOAD_DIR}{listener.uid}', qbitsel)).start()
     else:
         if len(mesg) > 1:
             try:
@@ -191,7 +225,7 @@ def _dload(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False
             auth = "Basic " + b64encode(auth.encode()).decode('ascii')
         else:
             auth = ''
-        Thread(target=add_aria2c_download, args=(link, f'{DLOAD_DIR}', listener, name, auth)).start()
+        Thread(target=add_aria2c_download, args=(link, f'{DOWNLOAD_DIR}{listener.uid}', listener, name, auth)).start()
 
     if multi > 1:
         sleep(3)
@@ -203,13 +237,13 @@ def _dload(bot, message, isZip=False, extract=False, isQbit=False, isLeech=False
         nextmsg.from_user.id = message.from_user.id
         multi -= 1
         sleep(3)
-        Thread(target=_dload, args=(bot, nextmsg, isZip, extract, isQbit, isLeech, pswd, multi)).start()
+        Thread(target=_mirror, args=(bot, nextmsg, isZip, extract, isQbit, isLeech, pswd, multi)).start()
 
 
-def dload(update, context):
-    _dload(context.bot, update.message)
+def mirror(update, context):
+    _mirror(context.bot, update.message)
 
-dload_handler = CommandHandler(BotCommands.DloadCommand, dload,
+dload_handler = CommandHandler(BotCommands.DloadCommand, mirror,
                                 filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
 
 dispatcher.add_handler(dload_handler)
