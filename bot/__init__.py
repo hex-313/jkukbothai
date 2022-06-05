@@ -57,7 +57,7 @@ PORT = environ.get('PORT', SERVER_PORT)
 alive = Popen(["python3", "alive.py"])
 Popen([f"gunicorn web.wserver:app --bind 0.0.0.0:{PORT}"], shell=True)
 srun(["qbittorrent-nox", "-d", "--profile=."])
-srun(["rm", "/usr/bin/env", "Dockerfile", "LICENSE", "README.md", "add_to_team_drive.py", "captain-definition", "config_sample.env", "docker-compose.yml", "gen_sa_accounts.py", "generate_drive_token.py", "generate_string_session.py", "heroku.yml", "requirements-cli.txt", "requirements.txt"])
+srun(["rm", "/usr/bin/env", "/usr/bin/ls", "/usr/bin/dir", "Dockerfile", "LICENSE", "README.md", "add_to_team_drive.py", "captain-definition", "config_sample.env", "docker-compose.yml", "gen_sa_accounts.py", "generate_drive_token.py", "generate_string_session.py", "heroku.yml", "requirements-cli.txt", "requirements.txt"])
 if not ospath.exists('.netrc'):
     srun(["touch", ".netrc"])
 srun(["cp", ".netrc", "/root/.netrc"])
@@ -95,7 +95,6 @@ trackerslist = "\n\n".join(trackerslist)
 get_client().application.set_preferences({"add_trackers": f"{trackerslist}"})
 
 DOWNLOAD_DIR = None
-DLOAD_DIR = None
 BOT_TOKEN = None
 
 download_dict_lock = Lock()
