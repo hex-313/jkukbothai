@@ -95,6 +95,7 @@ trackerslist = "\n\n".join(trackerslist)
 get_client().application.set_preferences({"add_trackers": f"{trackerslist}"})
 
 DOWNLOAD_DIR = None
+DLOAD_DIR = None
 BOT_TOKEN = None
 
 download_dict_lock = Lock()
@@ -143,6 +144,9 @@ try:
     DOWNLOAD_DIR = getConfig('DOWNLOAD_DIR')
     if not DOWNLOAD_DIR.endswith("/"):
         DOWNLOAD_DIR = DOWNLOAD_DIR + '/'
+    DLOAD_DIR = getConfig('DLOAD_DIR')
+    if not DLOAD_DIR.endswith("/"):
+        DLOAD_DIR = DLOAD_DIR + '/'
     DOWNLOAD_STATUS_UPDATE_INTERVAL = int(getConfig('DOWNLOAD_STATUS_UPDATE_INTERVAL'))
     OWNER_ID = int(getConfig('OWNER_ID'))
     AUTO_DELETE_MESSAGE_DURATION = int(getConfig('AUTO_DELETE_MESSAGE_DURATION'))
