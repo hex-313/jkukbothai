@@ -211,5 +211,5 @@ def dload(update, context):
 
 dload_handler = CommandHandler(BotCommands.DloadCommand, dload,
                                 filters=CustomFilters.authorized_chat | CustomFilters.authorized_user, run_async=True)
-                                
+
 dispatcher.add_handler(dload_handler)
